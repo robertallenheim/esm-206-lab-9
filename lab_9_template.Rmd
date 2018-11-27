@@ -31,7 +31,8 @@ Use this template to follow along in Lab Week 9. Each code chunk you'll need is 
 
 # a. Load packages 'tidyverse' and 'stargazer':
 
-
+library(tidyverse)
+library(stargazer)
 
 ```
 
@@ -41,9 +42,14 @@ Use this template to follow along in Lab Week 9. Each code chunk you'll need is 
 
 # a. Read in data as 'homes':
 
+homes <- read_csv("slo_homes.csv")
 
 # b. Filter to only include cities "San Luis Obispo", "Santa Maria-Orcutt", "Atascadero", and "Arroyo Grande", and call this new subset 'homes_sub':
 
+homes_sub <- homes %>%
+  filter(City == "Arroyo Grande" | City == "San Luis Obispo" | City == "Atascadero" | City == "Santa Maria-Orcutt")
+
+homes_sub
 
 
 ```
@@ -88,6 +94,8 @@ by_sqft
 
 # Observations here: Does relationship appear ~ linear? Anything else we can pick out re: trends, outliers, etc.? What is the general trend? Any outliers? Is there reason enough for us to omit it?
 
+# Relationship appears linear. There are a few outliers in Regular and Short Sale homes, but not enough reason to omit. 
+
 ```
 
 ###4. Multiple linear regression
@@ -107,8 +115,20 @@ Use summary() to view the model output and statistics.
 
 # a. Saturated model: 
 
+homes_lm1 <- lm(Price ~ City + Bedrooms+ Bathrooms + SqFt + PricePerSqFt + Status, data = homes_sub)
+
+homes_lm1
+
+# Forclosure selected as reference level. Arroyo Grande selected as reference level. 
+
+# Makes no sense to include PricePerSqFt. PricePerSqFt is calculated from the dependent variable Price. Can result in biased overfitting of model results. 
+
+# This model is bad. Bedrooms, SqFt, and PricePerSqFt all represent the same metric (size of the house). 
 
 # b. Model summary:
+
+summary(homes_lm1)
+
 
 ```
 
@@ -118,7 +138,23 @@ The next model: Exclude price per square foot, and bedrooms/bathrooms (since the
 
 # a. Updated model with variables City, SqFt, and Status:
 
+homes_lm2 <- lm(Price ~ City + SqFt + Status, data = homes_sub)
+
+homes_lm2
+
+# Arroyo Grande is the reference variable. 
+
+# If two houses are the same in terms of all other variables in the model (SqFt and Status), then would expect a house in San Luis Obispo to sell for $34,525.40 more than a house in Arroyo Grande. 
+
+# For every one SqFt increase in house size, expect price to rise by $254.90 if all other variables are held constant. 
+
+# If all other variables are held constant, expect StatusRegular house to sell for $209,998.90 more than Foreclosure house. 
+
 # b. Model summary:
+
+summary(homes_lm2)
+
+# Use the adjusted R-squared value for multiple predictor variables. 
 
 ```
 
@@ -128,19 +164,27 @@ Wait...but what if I wanted everything to be with respect to a Regular sale stat
 
 # a. Set Status to class 'factor'
 
+homes_sub$Status <- factor(homes_sub$Status)
 
 # b. Check to ensure it's a factor now
 
+# Run homes_sub$Status in the console. Should say 'factor'
 
 # c. Check levels:
 
+levels(homes_sub$Status)
 
 # d. Reassign reference level of "Status" to "Regular":
 
+homes_sub$Status <- fct_relevel(homes_sub$Status, "Regular")
 
 # e. Now run the regression again - same equation, but now the reference level is different (Status = Regular): 
 
+homes_lm3 <- lm(Price ~ City + SqFt + Status, data = homes_sub )
 
+homes_lm3
+
+summary(homes_lm3)
 
 ```
 
@@ -157,6 +201,15 @@ Then we can evaluate model diagnostics using the plot() function:
 
 # a. Model diagnostics:
 
+plot(homes_lm3)
+
+
+# Focus on the first two graphs. Look at the residual spread (heteroscedasticity) in graph 1 and normality (linearity) in graph 2. 
+
+# Overall, heteroscedasticity is ok and residuals definitely look normal. Concepturally and mathematically models make sense. 
+
+# 188 would be a good house to buy, model predicts the value of 188 to be higher than what it's priced as. 
+
 ```
 
 ###6. Model comparison by Akaike Information Criterion
@@ -167,7 +220,14 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 
 # a. AIC values for each model
 
+sat_aic <- AIC(homes_lm1)
+final_aic <- AIC(homes_lm3)
+
+# First model has a lower AIC value. But AIC predicts best model based on mathematics alone. 
+
 # Answer: which would you pick? 
+
+# Homes_lm3 is the best model in this case because: heteroscedasticity is ok and residuals definitely look normal. Concepturally and mathematically homes_lm3 make sense.
 
 ```
 
@@ -177,7 +237,9 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 
 # a. Prepare a nice regression table:
 
+lm_table <- stargazer(homes_lm1, homes_lm3, type = "html")
 
+lm_table
 
 # Note: If you want to work with this in Word, save to html, open, copy and paste into Word. 
 
@@ -221,6 +283,9 @@ df_new <- data.frame(City = rep(c("San Luis Obispo",
                                   times = 12, 
                                   each = 20))
 
+# Creates a sequence from 500-3500 SqFt for each city
+# Gives 20 regular, 20 short sale, 20 foreclosure
+
 ```
 
 Make predictions for the new data using predict():
@@ -229,9 +294,13 @@ Make predictions for the new data using predict():
 
 # a. Make predictions using the new data frame:
 
+price_predict <- predict(homes_lm3, newdata= df_new, se.fit = TRUE, interval = "confidence")
+
 # b. Bind predictions to the data to make it actually useful:
 
+predict_df <- data.frame(df_new, price_predict)
 
+# Fit.fit predicts price at which a home will sell for a give city, SqFt, and status. 
 
 ```
 
@@ -241,6 +310,11 @@ Then visualize it!
 
 # Create a line graph with square footage on the x-axis, predicted price on y-axis, with color dependent on City and facet_wrapped by sale status (follow along):
 
+predict_graph <- ggplot(predict_df, aes(x = SqFt, y = fit.fit)) + 
+  geom_line(aes(color = City)) +
+  facet_wrap(~Status)
+
+predict_graph
 
 ```
 
